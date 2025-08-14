@@ -270,34 +270,45 @@ class CompuzoneParser:
             products = self.search_products(keyword, "sale_order", [], limit=50)
             
             # 제품명에서 브랜드 추출
-            brands_found = set()
+            brands_found = {}  # {브랜드명: 개수} 형태로 저장
+            
+            print(f"검색된 제품 수: {len(products)}개")
+            
             for product in products:
                 # [브랜드] 형식 추출
                 bracket_match = re.search(r'\[([^\]]+)\]', product.name)
                 if bracket_match:
                     brand_name = bracket_match.group(1).strip()
                     if len(brand_name) > 1:  # 너무 짧은 것 제외
-                        brands_found.add(brand_name)
+                        brands_found[brand_name] = brands_found.get(brand_name, 0) + 1
+                        if len(brands_found) <= 5:  # 처음 5개만 디버그 출력
+                            print(f"  브랜드 발견: [{brand_name}] from {product.name[:40]}...")
             
-            # 알려진 제조사 ID 매핑
+            # 알려진 제조사 ID 매핑 (더 포괄적으로)
             known_ids = {
                 'SEBAP': '10219', 'Western Digital': '24', '동화': '439', 
                 'SEAGATE': '25', 'HPE': '15947', '삼성전자': '2', 
                 'HP': '99', '레노버': '4629', 'ASUS': '9', 'MSI': '475',
                 'GIGABYTE': '14', 'ADATA': '3400', 'Crucial': '6348',
-                'Kingston': '18', 'Corsair': '763', 'G.SKILL': '1419'
+                'Kingston': '18', 'Corsair': '763', 'G.SKILL': '1419',
+                '지스킬': '1419', 'TeamGroup': '1419', 'TEAMGROUP': '1419',
+                'CORSAIR': '763', 'Patriot': '1046', 'KINGMAX': '18'
             }
+            
+            # 제품 개수 기준으로 정렬 (실제로 많이 나오는 브랜드 우선)
+            sorted_brands = sorted(brands_found.items(), key=lambda x: x[1], reverse=True)
             
             # 결과 생성
             result = []
-            for brand in sorted(brands_found):
+            for brand_name, count in sorted_brands:
                 # 알려진 ID가 있으면 사용, 없으면 브랜드명을 ID로 사용
-                brand_id = known_ids.get(brand, brand)
-                result.append({'name': brand, 'code': brand_id})
+                brand_id = known_ids.get(brand_name, brand_name)
+                result.append({'name': brand_name, 'code': brand_id})
             
             print(f"실제 제품에서 추출한 브랜드: {len(result)}개")
             for brand in result[:10]:  # 처음 10개만 표시
-                print(f"  - {brand['name']} (ID: {brand['code']})")
+                count = brands_found[brand['name']]
+                print(f"  - {brand['name']} (ID: {brand['code']}) - {count}개 제품")
             
             return result[:15]  # 최대 15개까지
             
@@ -413,13 +424,13 @@ class CompuzoneParser:
             resp.encoding = 'utf-8'
             resp.raise_for_status()
             
-            # API 파라미터 설정 (제조사 필터링 포함, 컴퓨터부품 카테고리로 제한)
+            # API 파라미터 설정 (컴퓨터부품 카테고리로 제한, 제조사 필터링은 클라이언트에서 처리)
             params = {
                 "actype": "list",
                 "SearchType": "small",
                 "SearchText": keyword,
                 "PreOrder": sort_type if sort_type else "sale_order",
-                "PageCount": str(min(limit * 3, 100)),  # 충분한 결과를 위해
+                "PageCount": "100",  # 충분한 결과를 가져와서 클라이언트에서 필터링
                 "StartNum": "0",
                 "PageNum": "1",
                 "ListType": "0",
@@ -428,7 +439,7 @@ class CompuzoneParser:
                 "DivNo": "",
                 "MinPrice": "0",
                 "MaxPrice": "0",
-                "ChkMakerNo": ",".join(maker_codes) if maker_codes else ""  # 제조사 ID로 필터링
+                "ChkMakerNo": ""  # 서버 필터링 대신 클라이언트 필터링 사용
             }
             
             headers = {
@@ -488,7 +499,9 @@ class CompuzoneParser:
                             known_brand_names = {
                                 '2': '삼성전자', '24': 'Western Digital', '25': 'SEAGATE',
                                 '99': 'HP', '4629': '레노버', '10219': 'SEBAP', 
-                                '439': '동화', '15947': 'HPE'
+                                '439': '동화', '15947': 'HPE', '1419': 'G.SKILL',
+                                '3400': 'ADATA', '6348': 'Crucial', '18': 'Kingston',
+                                '763': 'Corsair', '1046': 'Patriot'
                             }
                             expected_brand = known_brand_names.get(code, '')
                             if expected_brand and bracket_brand.upper() == expected_brand.upper():
@@ -496,6 +509,10 @@ class CompuzoneParser:
                                 break
                         # 브랜드명 직접 매칭
                         elif code.upper() == bracket_brand.upper():
+                            brand_found = True
+                            break
+                        # 부분 매칭도 시도
+                        elif bracket_brand.upper() in code.upper() or code.upper() in bracket_brand.upper():
                             brand_found = True
                             break
                 
