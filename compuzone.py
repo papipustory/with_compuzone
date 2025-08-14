@@ -529,7 +529,7 @@ class CompuzoneParser:
                     return None
             
             # 가격 추출 - 여러 가능한 선택자 시도
-            price_text = "가격 문의"
+            price_text = "품절"  # 기본값을 품절로 변경
             price_selectors = [
                 ".prd_price .number",
                 ".prd_price .price", 
@@ -549,7 +549,8 @@ class CompuzoneParser:
             if price_clean and price_clean != '0':
                 formatted_price = f"{int(price_clean):,}원"
             else:
-                formatted_price = "가격 문의"
+                # 숫자 가격이 없으면 구매 불가능한 상태로 간주
+                formatted_price = "품절"
             
             # 사양 정보 추출 시도 (다양한 방법으로)
             specifications = []
