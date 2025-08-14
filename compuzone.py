@@ -162,19 +162,154 @@ class CompuzoneParser:
         
         return manufacturers
 
+    def _get_manufacturers_from_actual_products(self, keyword: str) -> List[Dict[str, str]]:
+        """실제 검색된 제품들에서 제조사를 추출합니다."""
+        try:
+            # 제조사 필터링 없이 전체 제품 검색
+            encoded_keyword = urllib.parse.quote(keyword, encoding='utf-8')
+            search_url = f"{self.base_url}?SearchProductKey={encoded_keyword}"
+            
+            # 검색 페이지 접근
+            resp = self.session.get(search_url, timeout=10)
+            resp.encoding = 'utf-8'
+            resp.raise_for_status()
+            
+            # API 호출로 실제 제품 목록 가져오기 (컴퓨터부품 카테고리로 제한)
+            params = {
+                "actype": "list",
+                "SearchType": "small",
+                "SearchText": keyword,
+                "PreOrder": "sale_order",
+                "PageCount": "100",  # 더 많은 제품을 가져와서 제조사 추출
+                "StartNum": "0",
+                "PageNum": "1",
+                "ListType": "0",
+                "BigDivNo": "4",  # 컴퓨터부품 카테고리
+                "MediumDivNo": "",
+                "DivNo": "",
+                "MinPrice": "0",
+                "MaxPrice": "0",
+                "ChkMakerNo": ""
+            }
+            
+            headers = {
+                "Accept": "*/*",
+                "Referer": search_url,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+            }
+            
+            resp = self.session.get(self.search_api_url, params=params, headers=headers, timeout=10)
+            resp.encoding = 'euc-kr'
+            resp.raise_for_status()
+            
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # 제품 아이템에서 제조사 추출
+            product_items = soup.select("li.li-obj")
+            manufacturers_found = {}  # {브랜드명: ID} 형태로 저장
+            
+            print(f"실제 검색된 제품 수: {len(product_items)}개")
+            
+            for item in product_items:
+                product_name_tag = item.select_one(".prd_info_name.prdTxt, .prd_info_name")
+                if product_name_tag:
+                    product_name = product_name_tag.get_text(strip=True)
+                    
+                    # [브랜드] 형식에서 브랜드 추출
+                    bracket_brand_match = re.search(r'\[([^\]]+)\]', product_name)
+                    if bracket_brand_match:
+                        brand_name = bracket_brand_match.group(1)
+                        
+                        # 해당 브랜드의 제조사 ID 찾기 (API 호출을 통해)
+                        if brand_name not in manufacturers_found:
+                            brand_id = self._find_manufacturer_id_for_brand(brand_name, keyword)
+                            if brand_id:
+                                manufacturers_found[brand_name] = brand_id
+                                print(f"  - {brand_name} (ID: {brand_id})")
+            
+            # 결과를 리스트로 변환
+            result = []
+            for brand_name, brand_id in manufacturers_found.items():
+                result.append({'name': brand_name, 'code': brand_id})
+            
+            print(f"실제 제품이 있는 제조사: {len(result)}개")
+            return result[:15]  # 최대 15개까지
+            
+        except Exception as e:
+            print(f"실제 제품에서 제조사 추출 실패: {e}")
+            return []
+
+    def _find_manufacturer_id_for_brand(self, brand_name: str, keyword: str) -> Optional[str]:
+        """특정 브랜드의 제조사 ID를 찾습니다."""
+        try:
+            # API에서 제조사 체크박스 추출하여 해당 브랜드 ID 찾기
+            manufacturers_from_api = self._get_manufacturer_from_search_api(keyword)
+            
+            for mfr in manufacturers_from_api:
+                if mfr['name'].lower() == brand_name.lower():
+                    return mfr['code']
+            
+            # 알려진 제조사 매핑에서도 찾기
+            known_mapping = {
+                '삼성전자': '2', 'HP': '99', '레노버': '4629',
+                'Western Digital': '24', 'SEAGATE': '25', 'ADATA': '3400',
+                '동화': '439', 'SEBAP': '10219', 'HPE': '15947'
+            }
+            
+            return known_mapping.get(brand_name)
+            
+        except Exception as e:
+            print(f"브랜드 {brand_name}의 ID 찾기 실패: {e}")
+            return None
+
+    def _extract_brands_from_search_results(self, keyword: str) -> List[Dict[str, str]]:
+        """실제 검색 결과에서 브랜드를 추출합니다 (간단한 방법)."""
+        try:
+            # 기본 제품 검색 (제조사 필터링 없이)
+            products = self.search_products(keyword, "sale_order", [], limit=50)
+            
+            # 제품명에서 브랜드 추출
+            brands_found = set()
+            for product in products:
+                # [브랜드] 형식 추출
+                bracket_match = re.search(r'\[([^\]]+)\]', product.name)
+                if bracket_match:
+                    brand_name = bracket_match.group(1).strip()
+                    if len(brand_name) > 1:  # 너무 짧은 것 제외
+                        brands_found.add(brand_name)
+            
+            # 알려진 제조사 ID 매핑
+            known_ids = {
+                'SEBAP': '10219', 'Western Digital': '24', '동화': '439', 
+                'SEAGATE': '25', 'HPE': '15947', '삼성전자': '2', 
+                'HP': '99', '레노버': '4629', 'ASUS': '9', 'MSI': '475',
+                'GIGABYTE': '14', 'ADATA': '3400', 'Crucial': '6348',
+                'Kingston': '18', 'Corsair': '763', 'G.SKILL': '1419'
+            }
+            
+            # 결과 생성
+            result = []
+            for brand in sorted(brands_found):
+                # 알려진 ID가 있으면 사용, 없으면 브랜드명을 ID로 사용
+                brand_id = known_ids.get(brand, brand)
+                result.append({'name': brand, 'code': brand_id})
+            
+            print(f"실제 제품에서 추출한 브랜드: {len(result)}개")
+            for brand in result[:10]:  # 처음 10개만 표시
+                print(f"  - {brand['name']} (ID: {brand['code']})")
+            
+            return result[:15]  # 최대 15개까지
+            
+        except Exception as e:
+            print(f"브랜드 추출 실패: {e}")
+            return []
+
     def get_search_options(self, keyword: str) -> List[Dict[str, str]]:
         """컴퓨존에서 검색 결과를 통해 브랜드를 추출합니다."""
         try:
-            # 1단계: API에서 제조사 체크박스 추출 시도
-            manufacturers = self._get_manufacturer_from_search_api(keyword)
-            if manufacturers:
-                return manufacturers
-            
-            # 2단계: 알려진 제조사 ID 매핑 사용
-            manufacturers = self._get_known_manufacturer_ids(keyword)
-            if manufacturers:
-                print(f"알려진 제조사 ID 매핑 사용: {len(manufacturers)}개")
-                return manufacturers
+            # 간단한 방법: 실제 제품 검색 후 제품명에서 브랜드 추출
+            return self._extract_brands_from_search_results(keyword)
             
             # 3단계: API에서 제품명을 통해 브랜드 추출 (fallback)
             # URL 인코딩된 검색어로 요청
@@ -278,7 +413,7 @@ class CompuzoneParser:
             resp.encoding = 'utf-8'
             resp.raise_for_status()
             
-            # API 파라미터 설정 (제조사 필터링 포함)
+            # API 파라미터 설정 (제조사 필터링 포함, 컴퓨터부품 카테고리로 제한)
             params = {
                 "actype": "list",
                 "SearchType": "small",
@@ -288,7 +423,7 @@ class CompuzoneParser:
                 "StartNum": "0",
                 "PageNum": "1",
                 "ListType": "0",
-                "BigDivNo": "",
+                "BigDivNo": "4",  # 컴퓨터부품 카테고리
                 "MediumDivNo": "",
                 "DivNo": "",
                 "MinPrice": "0",
@@ -344,16 +479,23 @@ class CompuzoneParser:
                 # [브랜드] 형식에서 브랜드 추출
                 bracket_brand_match = re.search(r'\[([^\]]+)\]', product_name)
                 if bracket_brand_match:
-                    bracket_brand = bracket_brand_match.group(1)
-                    for brand in maker_codes:
-                        if brand.upper() == bracket_brand.upper():
-                            brand_found = True
-                            break
-                
-                # 기존 방식도 시도
-                if not brand_found:
-                    for brand in maker_codes:
-                        if brand.upper() in product_name.upper():
+                    bracket_brand = bracket_brand_match.group(1).strip()
+                    
+                    # 제조사 코드와 매칭
+                    for code in maker_codes:
+                        # 숫자 ID인 경우 알려진 매핑으로 확인
+                        if code.isdigit():
+                            known_brand_names = {
+                                '2': '삼성전자', '24': 'Western Digital', '25': 'SEAGATE',
+                                '99': 'HP', '4629': '레노버', '10219': 'SEBAP', 
+                                '439': '동화', '15947': 'HPE'
+                            }
+                            expected_brand = known_brand_names.get(code, '')
+                            if expected_brand and bracket_brand.upper() == expected_brand.upper():
+                                brand_found = True
+                                break
+                        # 브랜드명 직접 매칭
+                        elif code.upper() == bracket_brand.upper():
                             brand_found = True
                             break
                 
