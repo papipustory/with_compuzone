@@ -292,7 +292,11 @@ class CompuzoneParser:
                 'GIGABYTE': '14', 'ADATA': '3400', 'Crucial': '6348',
                 'Kingston': '18', 'Corsair': '763', 'G.SKILL': '1419',
                 '지스킬': '1419', 'TeamGroup': '1419', 'TEAMGROUP': '1419',
-                'CORSAIR': '763', 'Patriot': '1046', 'KINGMAX': '18'
+                'CORSAIR': '763', 'Patriot': '1046', 'KINGMAX': '18',
+                # HTML 체크박스에서 확인된 그래픽카드 제조사들
+                'MANLI': '3169', 'PNY': '1111', 'PALIT': '8842',
+                'ZOTAC': '2416', 'Thermal grizzly': '8231', 'INNO3D': '6238',
+                'GAINWARD': '32'
             }
             
             # 제품 개수 기준으로 정렬 (실제로 많이 나오는 브랜드 우선)
@@ -501,7 +505,12 @@ class CompuzoneParser:
                                 '99': 'HP', '4629': '레노버', '10219': 'SEBAP', 
                                 '439': '동화', '15947': 'HPE', '1419': 'G.SKILL',
                                 '3400': 'ADATA', '6348': 'Crucial', '18': 'Kingston',
-                                '763': 'Corsair', '1046': 'Patriot'
+                                '763': 'Corsair', '1046': 'Patriot',
+                                # HTML 체크박스에서 확인된 RTX 5090 제조사들
+                                '14': 'GIGABYTE', '9': 'ASUS', '475': 'MSI',
+                                '3169': 'MANLI', '1111': 'PNY', '8842': 'PALIT',
+                                '2416': 'ZOTAC', '8231': 'Thermal grizzly', '6238': 'INNO3D',
+                                '32': 'GAINWARD'
                             }
                             expected_brand = known_brand_names.get(code, '')
                             if expected_brand and bracket_brand.upper() == expected_brand.upper():
@@ -578,10 +587,14 @@ class CompuzoneParser:
             if not specifications:
                 specifications.append("컴퓨존 상품")
             
+            # 5. 최종 사양 스마트 중복 제거
+            final_specs_text = " / ".join(specifications)
+            deduplicated_specs = self._smart_deduplicate_specs(final_specs_text)
+            
             return Product(
                 name=product_name, 
                 price=formatted_price, 
-                specifications=" / ".join(specifications)
+                specifications=deduplicated_specs
             )
             
         except Exception as e:
@@ -589,55 +602,105 @@ class CompuzoneParser:
             return None
 
     def _extract_specs_from_name(self, product_name: str) -> List[str]:
-        """제품명에서 주요 사양 정보를 추출합니다."""
+        """제품명에서 주요 사양 정보를 간단히 추출합니다."""
         specs = []
         name_upper = product_name.upper()
         
-        # GPU 메모리 용량 추출 (그래픽카드)
-        gpu_memory_patterns = [
-            r'(\d+GB)\s*D?D?R?\d*',  # 8GB, 16GB DDR6 등
-            r'(\d+G)\s*D?D?R?\d*',   # 8G DDR6 등
-        ]
-        for pattern in gpu_memory_patterns:
-            matches = re.findall(pattern, name_upper)
-            if matches:
-                specs.extend([f"VRAM {match}" for match in matches])
+        # 1. 용량 정보 추출 (GB, TB)
+        capacity_matches = re.findall(r'(\d+[KMGT]?B)', name_upper)
+        for capacity in capacity_matches:
+            # GPU인 경우 VRAM으로 표시
+            if any(keyword in name_upper for keyword in ['RTX', 'GTX', 'RX', 'RADEON', 'GEFORCE']):
+                specs.append(f"VRAM {capacity}")
+                break  # GPU는 하나의 VRAM만
+            else:
+                specs.append(capacity)
+                break  # 저장장치도 하나의 용량만
         
-        # 메모리/저장장치 용량 추출
-        storage_patterns = [
-            r'(\d+TB)',    # 1TB, 2TB 등
-            r'(\d+GB)',    # 256GB, 512GB 등
+        # 2. 제품 시리즈 추출 (RTX, GTX, RX 등)
+        series_patterns = [
+            r'(RTX \d+)', r'(GTX \d+)', r'(RX \d+)', r'(ARC A\d+)',
+            r'(I\d-\d+K?F?)', r'(RYZEN \d+ \d+X?)'
         ]
-        for pattern in storage_patterns:
-            matches = re.findall(pattern, name_upper)
-            if matches:
-                specs.extend(matches)
+        for pattern in series_patterns:
+            match = re.search(pattern, name_upper)
+            if match:
+                specs.append(match.group(1))
+                break  # 하나의 시리즈만
         
-        # 메모리 타입 추출
-        memory_types = ['DDR4', 'DDR5', 'GDDR6', 'GDDR6X', 'HBM2', 'HBM3']
+        # 3. 메모리 타입 추출
+        memory_types = ['DDR5', 'DDR4', 'GDDR6X', 'GDDR6', 'HBM3', 'HBM2']
         for mem_type in memory_types:
             if mem_type in name_upper:
                 specs.append(mem_type)
+                break  # 하나의 메모리 타입만
         
-        # GPU 시리즈 추출
-        gpu_series = ['RTX 4090', 'RTX 4080', 'RTX 4070', 'RTX 4060', 'RTX 3080', 'RTX 3070', 'RTX 3060', 
-                     'RX 7900', 'RX 7800', 'RX 7700', 'RX 6800', 'RX 6700', 'RX 6600',
-                     'GTX 1660', 'GTX 1650', 'ARC A770', 'ARC A750']
-        for series in gpu_series:
-            if series in name_upper:
-                specs.append(series)
-        
-        # CPU 시리즈 추출  
-        cpu_patterns = [
-            r'I\d-\d+K?F?',     # i5-13400F, i7-13700K 등
-            r'RYZEN \d+ \d+X?', # RYZEN 5 5600X 등
-        ]
-        for pattern in cpu_patterns:
-            matches = re.findall(pattern, name_upper)
-            if matches:
-                specs.extend(matches)
-                
         return specs[:3]  # 최대 3개만 반환
+
+    def _smart_deduplicate_specs(self, specs_text: str) -> str:
+        """스마트 사양 중복 제거 - 의미적 유사성 기반"""
+        if not specs_text:
+            return specs_text
+        
+        parts = [part.strip() for part in specs_text.split(" / ") if part.strip()]
+        if len(parts) <= 1:
+            return specs_text
+        
+        unique_parts = []
+        
+        for part in parts:
+            is_duplicate = False
+            
+            for i, existing_part in enumerate(unique_parts):
+                if self._is_semantic_duplicate(part, existing_part):
+                    # 더 정보가 많은 것을 선택
+                    if len(part) > len(existing_part):
+                        unique_parts[i] = part
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                unique_parts.append(part)
+        
+        return " / ".join(unique_parts)
+    
+    def _is_semantic_duplicate(self, text1: str, text2: str) -> bool:
+        """두 텍스트가 의미적으로 중복인지 판단"""
+        t1, t2 = text1.lower().strip(), text2.lower().strip()
+        
+        # 1. 완전 동일
+        if t1 == t2:
+            return True
+        
+        # 2. 숫자+단위 패턴으로 용량 비교
+        def extract_capacity(text):
+            match = re.search(r'(\d+)\s*([KMGT]?B?)', text.upper())
+            if match:
+                number, unit = match.groups()
+                if unit in ['G', 'K', 'M', 'T']:
+                    unit = unit + 'B'
+                return (number, unit)
+            return None
+        
+        cap1, cap2 = extract_capacity(t1), extract_capacity(t2)
+        
+        # 같은 용량의 메모리/VRAM 정보면 중복
+        if cap1 and cap2 and cap1 == cap2:
+            has_mem1 = any(kw in t1 for kw in ['vram', 'memory', '메모리', 'gb', 'tb'])
+            has_mem2 = any(kw in t2 for kw in ['vram', 'memory', '메모리', 'gb', 'tb'])
+            if has_mem1 and has_mem2:
+                return True
+        
+        # 3. 제품 시리즈 중복 (RTX 5080 등)
+        def extract_series(text):
+            match = re.search(r'(RTX|GTX|RX|ARC)\s*(\d+)', text.upper())
+            return match.groups() if match else None
+        
+        series1, series2 = extract_series(t1), extract_series(t2)
+        if series1 and series2 and series1 == series2:
+            return True
+        
+        return False
 
     def get_unique_products(self, keyword: str, maker_codes: List[str]) -> List[Product]:
         """danawa와 호환되도록 하지만 컴퓨존은 단일 검색만 수행"""
