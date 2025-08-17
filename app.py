@@ -43,37 +43,31 @@ if search_button:
 if st.session_state.manufacturers:
     st.subheader("제조사를 선택하세요")
     
-    # 전체 선택/해제 버튼들을 form 밖에 배치
-    st.markdown("""
-    <style>
-    .tight-buttons {
-        display: flex;
-        gap: 5px;
-        align-items: center;
-        justify-content: flex-end;
-        margin-bottom: 10px;
-    }
-    .tight-buttons > div {
-        flex: 0 0 auto;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="tight-buttons">', unsafe_allow_html=True)
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("모든 제조사 선택"):
-            # 모든 체크박스를 True로 설정
-            for i in range(len(st.session_state.manufacturers)):
-                st.session_state[f"mfr_{i}"] = True
-            st.rerun()
+    # 전체 선택/해제 토글 버튼을 form 밖에 배치
+    col1, col2 = st.columns([3, 1])
     with col2:
-        if st.button("전체 해제"):
-            # 모든 체크박스를 False로 설정
-            for i in range(len(st.session_state.manufacturers)):
-                st.session_state[f"mfr_{i}"] = False
+        # 현재 선택된 제조사 수 확인
+        selected_count = 0
+        for i in range(len(st.session_state.manufacturers)):
+            if st.session_state.get(f"mfr_{i}", False):
+                selected_count += 1
+        
+        # 모든 제조사가 선택되어 있으면 "전체 해제", 아니면 "전체 선택"
+        if selected_count == len(st.session_state.manufacturers):
+            button_text = "전체 해제"
+        else:
+            button_text = "전체 선택"
+            
+        if st.button(button_text):
+            if selected_count == len(st.session_state.manufacturers):
+                # 모든 체크박스를 False로 설정
+                for i in range(len(st.session_state.manufacturers)):
+                    st.session_state[f"mfr_{i}"] = False
+            else:
+                # 모든 체크박스를 True로 설정
+                for i in range(len(st.session_state.manufacturers)):
+                    st.session_state[f"mfr_{i}"] = True
             st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
     
     with st.form(key="manufacturer_form"):
         cols = st.columns(4)
