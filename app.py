@@ -41,17 +41,7 @@ if search_button:
 
 # --- 2. Manufacturer Selection ---
 if st.session_state.manufacturers:
-    # 제목과 전체 선택 버튼을 나란히 배치
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.subheader("제조사를 선택하세요")
-    with col2:
-        # 전체 선택/해제 버튼
-        if st.button("🔍 모든 제조사 선택", help="모든 제조사를 한번에 선택합니다"):
-            # 모든 체크박스를 True로 설정
-            for i in range(len(st.session_state.manufacturers)):
-                st.session_state[f"mfr_{i}"] = True
-            st.rerun()
+    st.subheader("제조사를 선택하세요")
     
     with st.form(key="manufacturer_form"):
         cols = st.columns(4)
@@ -61,10 +51,16 @@ if st.session_state.manufacturers:
                 st.checkbox(manufacturer['name'], key=f"mfr_{i}")
         
         # 버튼들을 나란히 배치
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
         with col2:
+            if st.form_submit_button("모든 제조사 선택"):
+                # 모든 체크박스를 True로 설정
+                for i in range(len(st.session_state.manufacturers)):
+                    st.session_state[f"mfr_{i}"] = True
+                st.rerun()
+        with col3:
             clear_all_button = st.form_submit_button("전체 해제")
 
     if product_search_button:
