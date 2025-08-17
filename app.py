@@ -51,7 +51,7 @@ if st.session_state.manufacturers:
                 st.checkbox(manufacturer['name'], key=f"mfr_{i}")
         
         # 버튼들을 나란히 배치
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns([3, 1.2, 0.8])
         with col1:
             product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
         with col2:
