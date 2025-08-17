@@ -111,55 +111,43 @@ if st.session_state.products:
         else:
             df_with_links.at[i, "구매링크"] = "링크없음"
     
-    # 스타일이 적용된 HTML 테이블로 표시
+    # 스트림릿 기본 스타일과 동일하게 맞춘 테이블
     st.markdown("""
     <style>
-    table {
-        border-collapse: collapse;
-        margin: 25px 0;
-        font-size: 0.9em;
-        font-family: sans-serif;
-        min-width: 400px;
-        border-radius: 5px 5px 0 0;
-        overflow: hidden;
+    .streamlit-table {
         width: 100%;
+        border-collapse: collapse;
+        font-family: "Source Sans Pro", sans-serif;
+        font-size: 14px;
     }
-    table thead tr {
-        background-color: #009879;
-        color: #ffffff;
+    .streamlit-table th {
+        background-color: rgb(240, 242, 246);
+        color: rgb(38, 39, 48);
+        font-weight: 600;
+        padding: 0.5rem 0.75rem;
         text-align: left;
+        border-bottom: 1px solid rgb(230, 234, 241);
     }
-    table th,
-    table td {
-        padding: 12px 15px;
-        border: 1px solid #dddddd;
+    .streamlit-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgb(230, 234, 241);
+        color: rgb(38, 39, 48);
     }
-    table tbody tr {
-        border-bottom: 1px solid #dddddd;
+    .streamlit-table tr:hover {
+        background-color: rgb(245, 245, 245);
     }
-    table tbody tr:nth-of-type(even) {
-        background-color: #f3f3f3;
-    }
-    table tbody tr:hover {
-        background-color: #f5f5f5;
-    }
-    table a {
-        color: #009879;
+    .streamlit-table a {
+        color: rgb(255, 75, 75);
         text-decoration: none;
-        font-weight: bold;
-        padding: 5px 10px;
-        border: 1px solid #009879;
-        border-radius: 3px;
-        transition: all 0.3s;
+        font-weight: 600;
     }
-    table a:hover {
-        background-color: #009879;
-        color: white;
+    .streamlit-table a:hover {
+        text-decoration: underline;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    html_table = df_with_links.to_html(escape=False, index=False, classes='styled-table')
+    html_table = df_with_links.to_html(escape=False, index=False, classes='streamlit-table')
     st.markdown(html_table, unsafe_allow_html=True)
 
     # Reset button
