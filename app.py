@@ -111,43 +111,89 @@ if st.session_state.products:
         else:
             df_with_links.at[i, "구매링크"] = "링크없음"
     
-    # 스트림릿 기본 스타일과 동일하게 맞춘 테이블
+    # 다크모드와 라이트모드 모두 지원하는 테이블 스타일
     st.markdown("""
     <style>
-    .streamlit-table {
+    .adaptive-table {
         width: 100%;
         border-collapse: collapse;
         font-family: "Source Sans Pro", sans-serif;
         font-size: 14px;
+        background-color: var(--background-color);
+        color: var(--text-primary-color);
     }
-    .streamlit-table th {
-        background-color: rgb(240, 242, 246);
-        color: rgb(38, 39, 48);
+    
+    /* 라이트 모드 기본값 */
+    .adaptive-table {
+        --background-color: white;
+        --text-primary-color: rgb(38, 39, 48);
+        --header-bg-color: rgb(240, 242, 246);
+        --border-color: rgb(230, 234, 241);
+        --hover-bg-color: rgb(245, 245, 245);
+        --link-color: rgb(255, 75, 75);
+    }
+    
+    /* 다크 모드 감지 및 적용 */
+    @media (prefers-color-scheme: dark) {
+        .adaptive-table {
+            --background-color: rgb(14, 17, 23);
+            --text-primary-color: rgb(250, 250, 250);
+            --header-bg-color: rgb(38, 39, 48);
+            --border-color: rgb(68, 70, 84);
+            --hover-bg-color: rgb(38, 39, 48);
+            --link-color: rgb(255, 115, 115);
+        }
+    }
+    
+    /* 스트림릿 다크 테마 클래스 감지 */
+    [data-theme="dark"] .adaptive-table {
+        --background-color: rgb(14, 17, 23);
+        --text-primary-color: rgb(250, 250, 250);
+        --header-bg-color: rgb(38, 39, 48);
+        --border-color: rgb(68, 70, 84);
+        --hover-bg-color: rgb(38, 39, 48);
+        --link-color: rgb(255, 115, 115);
+    }
+    
+    .adaptive-table th {
+        background-color: var(--header-bg-color);
+        color: var(--text-primary-color);
         font-weight: 600;
         padding: 0.5rem 0.75rem;
         text-align: left;
-        border-bottom: 1px solid rgb(230, 234, 241);
+        border-bottom: 1px solid var(--border-color);
     }
-    .streamlit-table td {
+    
+    .adaptive-table td {
         padding: 0.5rem 0.75rem;
-        border-bottom: 1px solid rgb(230, 234, 241);
-        color: rgb(38, 39, 48);
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary-color);
+        background-color: var(--background-color);
     }
-    .streamlit-table tr:hover {
-        background-color: rgb(245, 245, 245);
+    
+    .adaptive-table tr:hover td {
+        background-color: var(--hover-bg-color);
     }
-    .streamlit-table a {
-        color: rgb(255, 75, 75);
+    
+    .adaptive-table a {
+        color: var(--link-color);
         text-decoration: none;
         font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid var(--link-color);
+        background-color: transparent;
+        transition: all 0.2s ease;
     }
-    .streamlit-table a:hover {
-        text-decoration: underline;
+    
+    .adaptive-table a:hover {
+        background-color: var(--link-color);
+        color: var(--background-color);
     }
     </style>
     """, unsafe_allow_html=True)
     
-    html_table = df_with_links.to_html(escape=False, index=False, classes='streamlit-table')
+    html_table = df_with_links.to_html(escape=False, index=False, classes='adaptive-table')
     st.markdown(html_table, unsafe_allow_html=True)
 
     # Reset button
