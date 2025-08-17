@@ -94,11 +94,21 @@ if st.session_state.products:
     data = [{
         "제품명": p.name,
         "가격": p.price,
-        "주요 사양": p.specifications
-    } for p in sorted_products]
+        "주요 사양": p.specifications,
+        "구매링크": f"구매{i+1}" if p.product_link else "링크없음"
+    } for i, p in enumerate(sorted_products)]
     
     df = pd.DataFrame(data)
-    st.dataframe(df, height=35 * (len(df) + 1), use_container_width=True)
+    
+    # 링크를 클릭 가능하게 만들기 위한 설정
+    df_display = df.copy()
+    
+    # 구매링크 열에 실제 링크 추가
+    for i, product in enumerate(sorted_products):
+        if product.product_link:
+            df_display.at[i, "구매링크"] = f"[구매{i+1}]({product.product_link})"
+    
+    st.dataframe(df_display, height=35 * (len(df) + 1), use_container_width=True)
 
     # Reset button
     if st.button("새로 검색하기"):
