@@ -51,17 +51,20 @@ if st.session_state.manufacturers:
                 st.checkbox(manufacturer['name'], key=f"mfr_{i}")
         
         # 버튼들을 나란히 배치
-        col1, col2, col3 = st.columns([3, 1.2, 0.8])
+        col1, col2 = st.columns([1, 1])
         with col1:
             product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
         with col2:
-            if st.form_submit_button("모든 제조사 선택"):
-                # 모든 체크박스를 True로 설정
-                for i in range(len(st.session_state.manufacturers)):
-                    st.session_state[f"mfr_{i}"] = True
-                st.rerun()
-        with col3:
-            clear_all_button = st.form_submit_button("전체 해제")
+            # 두 버튼을 가깝게 배치하기 위해 하나의 컬럼에 두 버튼을 함께 배치
+            subcol1, subcol2 = st.columns([1, 1])
+            with subcol1:
+                if st.form_submit_button("모든 제조사 선택"):
+                    # 모든 체크박스를 True로 설정
+                    for i in range(len(st.session_state.manufacturers)):
+                        st.session_state[f"mfr_{i}"] = True
+                    st.rerun()
+            with subcol2:
+                clear_all_button = st.form_submit_button("전체 해제")
 
     if product_search_button:
         # 폼 제출 후, st.session_state에서 직접 각 체크박스의 상태를 읽어옵니다.
