@@ -590,14 +590,118 @@ class CompuzoneParser:
                     if not self._matches_capacity_filter(option_name, capacity_filter):
                         continue
                 
-                # 옵션 가격 추출
-                option_price_tag = option_item.select_one(".op_price .f_black, .op_price span")
-                if not option_price_tag:
-                    continue
-                    
-                option_price_text = option_price_tag.get_text(strip=True)
+                # 세부 옵션 영역 확인 (.op_list_area)
+                op_list_area = option_item.select_one(".op_list_area")
+                if op_list_area:
+                    # 세부 옵션들이 있는 경우 (예: 4TB 개별/5팩/10팩)
+                    sub_options = op_list_area.select(".op_list")
+                    for sub_opt in sub_options:
+                        sub_product = self._parse_sub_option(sub_opt, base_product_name, option_name, item)
+                        if sub_product:
+                            products.append(sub_product)
+                else:
+                    # 세부 옵션이 없는 일반적인 경우
+                    product = self._parse_regular_option(option_item, base_product_name, option_name, item)
+                    if product:
+                        products.append(product)
                 
-                # 가격 정리
+        except Exception as e:
+            print(f"옵션 파싱 중 오류: {e}")
+        
+        return products
+
+    def _parse_sub_option(self, sub_opt, base_product_name: str, option_name: str, item) -> Optional[Product]:
+        """세부 옵션을 파싱합니다 (예: 4TB 개별/5팩/10팩)."""
+        try:
+            # 세부 옵션명 추출 (.opt_name)
+            sub_opt_name_tag = sub_opt.select_one(".opt_name")
+            if not sub_opt_name_tag:
+                return None
+                
+            sub_opt_name = sub_opt_name_tag.get_text(strip=True)
+            
+            # 세부 옵션 가격 추출
+            sub_price_tag = sub_opt.select_one(".op_price .f_black")
+            if not sub_price_tag:
+                # 품절인지 확인
+                if "품절" in sub_opt.get_text() or "재입고" in sub_opt.get_text():
+                    formatted_price = "품절"
+                else:
+                    return None
+            else:
+                sub_price_text = sub_price_tag.get_text(strip=True)
+                price_clean = re.sub(r'[^0-9]', '', sub_price_text)
+                if price_clean and price_clean != '0':
+                    formatted_price = f"{int(price_clean):,}원"
+                else:
+                    formatted_price = "품절"
+            
+            # 세부 사양 추출
+            option_specs = []
+            
+            # 1. 메인 옵션명 추가
+            option_specs.append(option_name)
+            
+            # 2. 세부 사양 추가 (괄호 안의 내용)
+            spec_match = re.search(r'\(([^)]+)\)', sub_opt_name)
+            if spec_match:
+                detailed_specs = spec_match.group(1)
+                option_specs.append(detailed_specs)
+            
+            # 3. 팩 정보 추가
+            if '[5PACK]' in sub_opt_name or '5PACK' in sub_opt_name:
+                option_specs.append("5개 팩")
+            elif '[10PACK]' in sub_opt_name or '10PACK' in sub_opt_name:
+                option_specs.append("10개 팩")
+            
+            # 4. 기본 제품 사양 추가
+            base_specs = self._extract_base_product_specs(item)
+            if base_specs:
+                option_specs.extend(base_specs[:1])  # 최대 1개만
+            
+            # 제품명 생성
+            pack_info = ""
+            if '[5PACK]' in sub_opt_name or '5PACK' in sub_opt_name:
+                pack_info = " (5개 팩)"
+            elif '[10PACK]' in sub_opt_name or '10PACK' in sub_opt_name:
+                pack_info = " (10개 팩)"
+            
+            full_product_name = f"{base_product_name} {option_name}{pack_info}"
+            
+            # 사양 정리
+            final_specs = " / ".join(option_specs) if option_specs else "컴퓨존 상품"
+            
+            return Product(
+                name=full_product_name,
+                price=formatted_price,
+                specifications=final_specs
+            )
+            
+        except Exception as e:
+            print(f"세부 옵션 파싱 중 오류: {e}")
+            return None
+
+    def _parse_regular_option(self, option_item, base_product_name: str, option_name: str, item) -> Optional[Product]:
+        """일반적인 옵션을 파싱합니다."""
+        try:
+            # 옵션 가격 추출
+            option_price_tag = option_item.select_one(".op_price .f_black, .op_price span")
+            if not option_price_tag:
+                return None
+                
+            option_price_text = option_price_tag.get_text(strip=True)
+            
+            # 범위 가격 처리 (예: "146,000원~ 1,416,200원")
+            if '~' in option_price_text:
+                # 범위 가격의 첫 번째 가격 사용
+                first_price = option_price_text.split('~')[0].strip()
+                price_clean = re.sub(r'[^0-9]', '', first_price)
+                if price_clean and price_clean != '0':
+                    formatted_price = f"{int(price_clean):,}원부터"
+                else:
+                    return None
+            else:
+                # 일반 가격 처리
                 price_clean = re.sub(r'[^0-9]', '', option_price_text)
                 if price_clean and price_clean != '0':
                     formatted_price = f"{int(price_clean):,}원"
@@ -605,48 +709,44 @@ class CompuzoneParser:
                     if "품절" in option_item.get_text():
                         formatted_price = "품절"
                     else:
-                        continue
-                
-                # 옵션 상세 사양 추출
-                option_specs = []
-                
-                # 1. 옵션명 추가
-                if option_name:
-                    option_specs.append(option_name)
-                
-                # 2. SSD 타입인 경우 추가 정보 없음 (이미 opt_name에 모든 정보 포함)
-                # HDD 타입인 경우 opt_name에서 추가 사양 추출
-                if option_name_tag and opt_detail_tag:
-                    additional_detail = opt_detail_tag.get_text(strip=True)
-                    # 괄호 안의 상세 사양 추출
-                    spec_match = re.search(r'\(([^)]+)\)', additional_detail)
-                    if spec_match:
-                        detailed_specs = spec_match.group(1)
-                        option_specs.append(detailed_specs)
-                
-                # 3. 기본 제품 사양 추가
-                base_specs = self._extract_base_product_specs(item)
-                if base_specs:
-                    option_specs.extend(base_specs[:2])  # 최대 2개만
-                
-                # 제품명 생성
-                full_product_name = f"{base_product_name} {option_name}"
-                
-                # 사양 정리
-                final_specs = " / ".join(option_specs) if option_specs else "컴퓨존 상품"
-                
-                product = Product(
-                    name=full_product_name,
-                    price=formatted_price,
-                    specifications=final_specs
-                )
-                
-                products.append(product)
-                
+                        return None
+            
+            # 옵션 상세 사양 추출
+            option_specs = []
+            
+            # 1. 옵션명 추가
+            if option_name:
+                option_specs.append(option_name)
+            
+            # 2. 세부 사양 추출 (SSD/HDD 타입별)
+            opt_detail_tag = option_item.select_one(".opt_name")
+            if opt_detail_tag:
+                additional_detail = opt_detail_tag.get_text(strip=True)
+                spec_match = re.search(r'\(([^)]+)\)', additional_detail)
+                if spec_match:
+                    detailed_specs = spec_match.group(1)
+                    option_specs.append(detailed_specs)
+            
+            # 3. 기본 제품 사양 추가
+            base_specs = self._extract_base_product_specs(item)
+            if base_specs:
+                option_specs.extend(base_specs[:2])  # 최대 2개만
+            
+            # 제품명 생성
+            full_product_name = f"{base_product_name} {option_name}"
+            
+            # 사양 정리
+            final_specs = " / ".join(option_specs) if option_specs else "컴퓨존 상품"
+            
+            return Product(
+                name=full_product_name,
+                price=formatted_price,
+                specifications=final_specs
+            )
+            
         except Exception as e:
-            print(f"옵션 파싱 중 오류: {e}")
-        
-        return products
+            print(f"일반 옵션 파싱 중 오류: {e}")
+            return None
 
     def _matches_capacity_filter(self, option_name: str, capacity_filter: str) -> bool:
         """옵션명이 용량 필터와 일치하는지 확인합니다."""
