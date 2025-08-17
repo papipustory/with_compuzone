@@ -91,24 +91,76 @@ if st.session_state.products:
     # 제품 목록을 가격 오름차순으로 정렬
     sorted_products = sorted(st.session_state.products, key=extract_price)
     
-    data = [{
-        "제품명": p.name,
-        "가격": p.price,
-        "주요 사양": p.specifications,
-        "구매링크": f"구매{i+1}" if p.product_link else "링크없음"
-    } for i, p in enumerate(sorted_products)]
+    # 데이터프레임 생성
+    data = []
+    for i, p in enumerate(sorted_products):
+        data.append({
+            "제품명": p.name,
+            "가격": p.price,
+            "주요 사양": p.specifications,
+            "구매링크": p.product_link if p.product_link else ""
+        })
     
     df = pd.DataFrame(data)
     
-    # 링크를 클릭 가능하게 만들기 위한 설정
-    df_display = df.copy()
-    
-    # 구매링크 열에 실제 링크 추가
+    # 클릭 가능한 링크로 데이터프레임 수정
+    df_with_links = df.copy()
     for i, product in enumerate(sorted_products):
         if product.product_link:
-            df_display.at[i, "구매링크"] = f"[구매{i+1}]({product.product_link})"
+            df_with_links.at[i, "구매링크"] = f'<a href="{product.product_link}" target="_blank">구매{i+1}</a>'
+        else:
+            df_with_links.at[i, "구매링크"] = "링크없음"
     
-    st.dataframe(df_display, height=35 * (len(df) + 1), use_container_width=True)
+    # 스타일이 적용된 HTML 테이블로 표시
+    st.markdown("""
+    <style>
+    table {
+        border-collapse: collapse;
+        margin: 25px 0;
+        font-size: 0.9em;
+        font-family: sans-serif;
+        min-width: 400px;
+        border-radius: 5px 5px 0 0;
+        overflow: hidden;
+        width: 100%;
+    }
+    table thead tr {
+        background-color: #009879;
+        color: #ffffff;
+        text-align: left;
+    }
+    table th,
+    table td {
+        padding: 12px 15px;
+        border: 1px solid #dddddd;
+    }
+    table tbody tr {
+        border-bottom: 1px solid #dddddd;
+    }
+    table tbody tr:nth-of-type(even) {
+        background-color: #f3f3f3;
+    }
+    table tbody tr:hover {
+        background-color: #f5f5f5;
+    }
+    table a {
+        color: #009879;
+        text-decoration: none;
+        font-weight: bold;
+        padding: 5px 10px;
+        border: 1px solid #009879;
+        border-radius: 3px;
+        transition: all 0.3s;
+    }
+    table a:hover {
+        background-color: #009879;
+        color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    html_table = df_with_links.to_html(escape=False, index=False, classes='styled-table')
+    st.markdown(html_table, unsafe_allow_html=True)
 
     # Reset button
     if st.button("새로 검색하기"):
