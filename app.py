@@ -43,6 +43,38 @@ if search_button:
 if st.session_state.manufacturers:
     st.subheader("제조사를 선택하세요")
     
+    # 전체 선택/해제 버튼들을 form 밖에 배치
+    st.markdown("""
+    <style>
+    .tight-buttons {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+    }
+    .tight-buttons > div {
+        flex: 0 0 auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="tight-buttons">', unsafe_allow_html=True)
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("모든 제조사 선택"):
+            # 모든 체크박스를 True로 설정
+            for i in range(len(st.session_state.manufacturers)):
+                st.session_state[f"mfr_{i}"] = True
+            st.rerun()
+    with col2:
+        if st.button("전체 해제"):
+            # 모든 체크박스를 False로 설정
+            for i in range(len(st.session_state.manufacturers)):
+                st.session_state[f"mfr_{i}"] = False
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     with st.form(key="manufacturer_form"):
         cols = st.columns(4)
         for i, manufacturer in enumerate(st.session_state.manufacturers):
@@ -50,36 +82,8 @@ if st.session_state.manufacturers:
                 # 각 체크박스에 고유한 key를 할당합니다. Streamlit이 이 key를 사용해 상태를 관리합니다.
                 st.checkbox(manufacturer['name'], key=f"mfr_{i}")
         
-        # 버튼들을 배치
-        st.markdown("""
-        <style>
-        .tight-buttons {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-        }
-        .tight-buttons > div {
-            flex: 0 0 auto;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
-        with col2:
-            # HTML로 두 버튼을 아주 가깝게 배치
-            st.markdown('<div class="tight-buttons">', unsafe_allow_html=True)
-            subcol1, subcol2 = st.columns([1, 1], gap="small")
-            with subcol1:
-                if st.form_submit_button("모든 제조사 선택"):
-                    # 모든 체크박스를 True로 설정
-                    for i in range(len(st.session_state.manufacturers)):
-                        st.session_state[f"mfr_{i}"] = True
-                    st.rerun()
-            with subcol2:
-                clear_all_button = st.form_submit_button("전체 해제")
-            st.markdown('</div>', unsafe_allow_html=True)
+        # 제품 검색 버튼
+        product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
 
     if product_search_button:
         # 폼 제출 후, st.session_state에서 직접 각 체크박스의 상태를 읽어옵니다.
@@ -104,11 +108,6 @@ if st.session_state.manufacturers:
                 # 검색이 완료되면 페이지를 새로고침하여 결과를 즉시 표시합니다.
                 st.rerun()
     
-    if clear_all_button:
-        # 모든 체크박스를 False로 설정
-        for i in range(len(st.session_state.manufacturers)):
-            st.session_state[f"mfr_{i}"] = False
-        st.rerun()
 
 # --- 3. Display Results ---
 if st.session_state.products:
