@@ -51,17 +51,35 @@ if st.session_state.manufacturers:
                 st.checkbox(manufacturer['name'], key=f"mfr_{i}")
         
         # 버튼들을 배치
-        col1, col2, col3 = st.columns([3, 1, 1])
+        st.markdown("""
+        <style>
+        .tight-buttons {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .tight-buttons > div {
+            flex: 0 0 auto;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2, 1])
         with col1:
             product_search_button = st.form_submit_button("선택한 제조사로 제품 검색")
         with col2:
-            if st.form_submit_button("모든 제조사 선택"):
-                # 모든 체크박스를 True로 설정
-                for i in range(len(st.session_state.manufacturers)):
-                    st.session_state[f"mfr_{i}"] = True
-                st.rerun()
-        with col3:
-            clear_all_button = st.form_submit_button("전체 해제")
+            # HTML로 두 버튼을 아주 가깝게 배치
+            st.markdown('<div class="tight-buttons">', unsafe_allow_html=True)
+            subcol1, subcol2 = st.columns([1, 1], gap="small")
+            with subcol1:
+                if st.form_submit_button("모든 제조사 선택"):
+                    # 모든 체크박스를 True로 설정
+                    for i in range(len(st.session_state.manufacturers)):
+                        st.session_state[f"mfr_{i}"] = True
+                    st.rerun()
+            with subcol2:
+                clear_all_button = st.form_submit_button("전체 해제")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     if product_search_button:
         # 폼 제출 후, st.session_state에서 직접 각 체크박스의 상태를 읽어옵니다.
