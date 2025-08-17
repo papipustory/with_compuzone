@@ -463,17 +463,275 @@ class CompuzoneParser:
             product_items = soup.select("li.li-obj")
             
             for item in product_items:
-                product = self._parse_product_item(item, maker_codes)
-                if product:
-                    products.append(product)
-                    if len(products) >= limit:
-                        break
+                parsed_products = self._parse_product_item_with_options(item, maker_codes, keyword)
+                products.extend(parsed_products)
+                if len(products) >= limit:
+                    break
             
-            return products
+            return products[:limit]
             
         except Exception as e:
             print(f"제품 검색 중 오류 발생: {e}")
             return []
+
+    def _parse_product_item_with_options(self, item, maker_codes: List[str], keyword: str) -> List[Product]:
+        """제품 아이템을 파싱하고 검색어에 맞는 옵션만 필터링합니다."""
+        try:
+            # 제품명 추출
+            product_name_tag = item.select_one(".prd_info_name.prdTxt, .prd_info_name")
+            if not product_name_tag:
+                return []
+                
+            base_product_name = product_name_tag.get_text(strip=True)
+            if not base_product_name:
+                return []
+            
+            # 브랜드 필터링
+            if maker_codes:
+                brand_found = False
+                bracket_brand_match = re.search(r'\[([^\]]+)\]', base_product_name)
+                if bracket_brand_match:
+                    bracket_brand = bracket_brand_match.group(1).strip()
+                    
+                    for code in maker_codes:
+                        if code.isdigit():
+                            known_brand_names = {
+                                '2': '삼성전자', '24': 'Western Digital', '25': 'SEAGATE',
+                                '99': 'HP', '4629': '레노버', '10219': 'SEBAP', 
+                                '439': '동화', '15947': 'HPE', '1419': 'G.SKILL',
+                                '3400': 'ADATA', '6348': 'Crucial', '18': 'Kingston',
+                                '763': 'Corsair', '1046': 'Patriot',
+                                '14': 'GIGABYTE', '9': 'ASUS', '475': 'MSI',
+                                '3169': 'MANLI', '1111': 'PNY', '8842': 'PALIT',
+                                '2416': 'ZOTAC', '8231': 'Thermal grizzly', '6238': 'INNO3D',
+                                '32': 'GAINWARD'
+                            }
+                            expected_brand = known_brand_names.get(code, '')
+                            if expected_brand and bracket_brand.upper() == expected_brand.upper():
+                                brand_found = True
+                                break
+                        elif code.upper() == bracket_brand.upper():
+                            brand_found = True
+                            break
+                        elif bracket_brand.upper() in code.upper() or code.upper() in bracket_brand.upper():
+                            brand_found = True
+                            break
+                
+                if not brand_found:
+                    return []
+            
+            # 검색어에서 용량 정보 추출
+            capacity_filter = self._extract_capacity_from_keyword(keyword)
+            
+            # 옵션 섹션 확인
+            option_wrap = item.select_one(".prd_option_wrap")
+            if option_wrap:
+                return self._parse_product_options_filtered(item, base_product_name, capacity_filter)
+            else:
+                # 옵션이 없는 경우 기존 방식으로 처리하되 용량 필터링 적용
+                product = self._parse_single_product_filtered(item, base_product_name, capacity_filter)
+                return [product] if product else []
+            
+        except Exception as e:
+            print(f"제품 파싱 중 오류: {e}")
+            return []
+
+    def _extract_capacity_from_keyword(self, keyword: str) -> Optional[str]:
+        """검색어에서 용량 정보를 추출합니다."""
+        keyword_upper = keyword.upper()
+        
+        # 용량 패턴 매칭 (숫자 + 단위)
+        capacity_patterns = [
+            r'(\d+)\s*TB',
+            r'(\d+)\s*GB',
+            r'(\d+)\s*MB'
+        ]
+        
+        for pattern in capacity_patterns:
+            match = re.search(pattern, keyword_upper)
+            if match:
+                number = match.group(1)
+                if 'TB' in keyword_upper:
+                    return f"{number}TB"
+                elif 'GB' in keyword_upper:
+                    return f"{number}GB"
+                elif 'MB' in keyword_upper:
+                    return f"{number}MB"
+        
+        return None
+
+    def _parse_product_options_filtered(self, item, base_product_name: str, capacity_filter: Optional[str]) -> List[Product]:
+        """제품 옵션들을 파싱하고 용량 필터를 적용합니다."""
+        products = []
+        
+        try:
+            option_items = item.select(".prd_option")
+            
+            for option_item in option_items:
+                # 옵션명 추출 (두 가지 구조 모두 지원)
+                option_name_tag = option_item.select_one(".op_name")  # HDD 타입
+                opt_detail_tag = option_item.select_one(".opt_name")  # SSD 타입
+                
+                option_name = ""
+                option_detail = ""
+                
+                if option_name_tag:
+                    # HDD 타입 (op_name에 용량 정보)
+                    option_name = option_name_tag.get_text(strip=True)
+                elif opt_detail_tag:
+                    # SSD 타입 (opt_name에 상세 정보)
+                    option_detail = opt_detail_tag.get_text(strip=True)
+                    option_name = option_detail  # 임시로 사용
+                else:
+                    continue
+                
+                # 용량 필터링 적용
+                if capacity_filter:
+                    if not self._matches_capacity_filter(option_name, capacity_filter):
+                        continue
+                
+                # 옵션 가격 추출
+                option_price_tag = option_item.select_one(".op_price .f_black, .op_price span")
+                if not option_price_tag:
+                    continue
+                    
+                option_price_text = option_price_tag.get_text(strip=True)
+                
+                # 가격 정리
+                price_clean = re.sub(r'[^0-9]', '', option_price_text)
+                if price_clean and price_clean != '0':
+                    formatted_price = f"{int(price_clean):,}원"
+                else:
+                    if "품절" in option_item.get_text():
+                        formatted_price = "품절"
+                    else:
+                        continue
+                
+                # 옵션 상세 사양 추출
+                option_specs = []
+                
+                # 1. 옵션명 추가
+                if option_name:
+                    option_specs.append(option_name)
+                
+                # 2. SSD 타입인 경우 추가 정보 없음 (이미 opt_name에 모든 정보 포함)
+                # HDD 타입인 경우 opt_name에서 추가 사양 추출
+                if option_name_tag and opt_detail_tag:
+                    additional_detail = opt_detail_tag.get_text(strip=True)
+                    # 괄호 안의 상세 사양 추출
+                    spec_match = re.search(r'\(([^)]+)\)', additional_detail)
+                    if spec_match:
+                        detailed_specs = spec_match.group(1)
+                        option_specs.append(detailed_specs)
+                
+                # 3. 기본 제품 사양 추가
+                base_specs = self._extract_base_product_specs(item)
+                if base_specs:
+                    option_specs.extend(base_specs[:2])  # 최대 2개만
+                
+                # 제품명 생성
+                full_product_name = f"{base_product_name} {option_name}"
+                
+                # 사양 정리
+                final_specs = " / ".join(option_specs) if option_specs else "컴퓨존 상품"
+                
+                product = Product(
+                    name=full_product_name,
+                    price=formatted_price,
+                    specifications=final_specs
+                )
+                
+                products.append(product)
+                
+        except Exception as e:
+            print(f"옵션 파싱 중 오류: {e}")
+        
+        return products
+
+    def _matches_capacity_filter(self, option_name: str, capacity_filter: str) -> bool:
+        """옵션명이 용량 필터와 일치하는지 확인합니다."""
+        option_upper = option_name.upper()
+        filter_upper = capacity_filter.upper()
+        
+        # 정확한 패턴 매칭 (단어 경계 고려)
+        # 예: "8GB"는 "128GB"와 매칭되지 않도록
+        filter_pattern = r'\b' + re.escape(filter_upper) + r'\b'
+        if re.search(filter_pattern, option_upper):
+            return True
+        
+        # 숫자와 단위를 분리해서 정확히 매칭
+        filter_match = re.search(r'(\d+)\s*(TB|GB|MB)', filter_upper)
+        option_match = re.search(r'(\d+)\s*(TB|GB|MB)', option_upper)
+        
+        if filter_match and option_match:
+            filter_num = filter_match.group(1)
+            filter_unit = filter_match.group(2)
+            option_num = option_match.group(1)
+            option_unit = option_match.group(2)
+            
+            # 숫자와 단위가 모두 일치해야 함
+            if filter_num == option_num and filter_unit == option_unit:
+                return True
+        
+        # 단위 변환 (1TB = 1024GB)
+        if filter_match and option_match:
+            filter_num = int(filter_match.group(1))
+            filter_unit = filter_match.group(2)
+            option_num = int(option_match.group(1))
+            option_unit = option_match.group(2)
+            
+            # TB를 GB로 변환해서 비교
+            filter_gb = filter_num * 1024 if filter_unit == 'TB' else filter_num
+            option_gb = option_num * 1024 if option_unit == 'TB' else option_num
+            
+            if filter_gb == option_gb:
+                return True
+        
+        return False
+
+    def _parse_single_product_filtered(self, item, product_name: str, capacity_filter: Optional[str]) -> Optional[Product]:
+        """단일 제품을 파싱하고 용량 필터를 적용합니다."""
+        try:
+            # 용량 필터링 적용
+            if capacity_filter:
+                if not self._matches_capacity_filter(product_name, capacity_filter):
+                    return None
+            
+            # 기존 단일 제품 파싱 로직
+            price_text = "품절"
+            price_selectors = [
+                ".prd_price .number",
+                ".prd_price .price", 
+                ".price_sect .number",
+                ".price .number",
+                ".prd_price"
+            ]
+            
+            for selector in price_selectors:
+                price_tag = item.select_one(selector)
+                if price_tag:
+                    price_text = price_tag.get_text(strip=True)
+                    break
+            
+            price_clean = re.sub(r'[^0-9]', '', price_text)
+            if price_clean and price_clean != '0':
+                formatted_price = f"{int(price_clean):,}원"
+            else:
+                formatted_price = "품절"
+            
+            specifications = self._extract_base_product_specs(item)
+            final_specs_text = " / ".join(specifications) if specifications else "컴퓨존 상품"
+            deduplicated_specs = self._smart_deduplicate_specs(final_specs_text)
+            
+            return Product(
+                name=product_name, 
+                price=formatted_price, 
+                specifications=deduplicated_specs
+            )
+            
+        except Exception as e:
+            print(f"단일 제품 파싱 중 오류: {e}")
+            return None
 
     def _parse_product_item(self, item, maker_codes: List[str]) -> Optional[Product]:
         """제품 아이템을 파싱합니다."""
@@ -601,6 +859,36 @@ class CompuzoneParser:
         except Exception as e:
             print(f"제품 파싱 중 오류: {e}")
             return None
+
+    def _extract_base_product_specs(self, item) -> List[str]:
+        """제품의 기본 사양 정보를 추출합니다."""
+        specifications = []
+        
+        # 1. .prd_subTxt에서 상세 사양 정보 추출 (가장 정확한 방법)
+        prd_subTxt = item.select_one(".prd_subTxt")
+        if prd_subTxt:
+            spec_text = prd_subTxt.get_text(strip=True)
+            if spec_text and len(spec_text) > 10:
+                # 불필요한 텍스트 제거 후 사양 정보 추가
+                clean_spec = re.sub(r'\s+', ' ', spec_text)
+                spec_parts = [part.strip() for part in clean_spec.split('/') if part.strip()]
+                specifications.extend(spec_parts[:3])  # 처음 3개만
+        
+        # 2. .prd_subTxt가 없으면 .prd_info에서 추출 (기존 방법)
+        if not specifications:
+            prd_info = item.select_one(".prd_info")
+            if prd_info:
+                info_text = prd_info.get_text(separator=' | ', strip=True)
+                parts = info_text.split(' | ')
+                
+                if len(parts) > 3:
+                    spec_part = parts[3].strip()
+                    if spec_part and len(spec_part) > 10 and not any(skip in spec_part for skip in ['토스', '확정발주', '입고지연']):
+                        spec_items = [s.strip() for s in spec_part.split('/') if s.strip() and len(s.strip()) > 2]
+                        if spec_items:
+                            specifications.extend(spec_items[:3])
+        
+        return specifications
 
     def _extract_specs_from_name(self, product_name: str) -> List[str]:
         """제품명에서 주요 사양 정보를 간단히 추출합니다."""
