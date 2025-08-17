@@ -11,6 +11,7 @@ class Product:
     name: str
     price: str
     specifications: str
+    product_link: str = ""
 
 class CompuzoneParser:
     def __init__(self):
@@ -620,6 +621,14 @@ class CompuzoneParser:
                 
             sub_opt_name = sub_opt_name_tag.get_text(strip=True)
             
+            # 제품 번호 추출 (세부 옵션에서)
+            product_link = ""
+            checkbox = sub_opt.select_one(".SelGroupProductNo")
+            if checkbox:
+                product_no = checkbox.get('value')
+                if product_no:
+                    product_link = f"https://www.compuzone.co.kr/product/product_detail.htm?ProductNo={product_no}"
+            
             # 세부 옵션 가격 추출
             sub_price_tag = sub_opt.select_one(".op_price .f_black")
             if not sub_price_tag:
@@ -674,7 +683,8 @@ class CompuzoneParser:
             return Product(
                 name=full_product_name,
                 price=formatted_price,
-                specifications=final_specs
+                specifications=final_specs,
+                product_link=product_link
             )
             
         except Exception as e:
@@ -684,6 +694,21 @@ class CompuzoneParser:
     def _parse_regular_option(self, option_item, base_product_name: str, option_name: str, item) -> Optional[Product]:
         """일반적인 옵션을 파싱합니다."""
         try:
+            # 제품 번호 추출 (메인 제품에서)
+            product_link = ""
+            main_link = item.select_one(".prd_info_name")
+            if main_link:
+                href = main_link.get('href')
+                if href:
+                    if href.startswith('http'):
+                        product_link = href
+                    elif href.startswith('/'):
+                        product_link = f"https://www.compuzone.co.kr{href}"
+                    elif href.startswith('../'):
+                        product_link = f"https://www.compuzone.co.kr/{href.replace('../', '')}"
+                    else:
+                        product_link = f"https://www.compuzone.co.kr/{href}"
+            
             # 옵션 가격 추출
             option_price_tag = option_item.select_one(".op_price .f_black, .op_price span")
             if not option_price_tag:
@@ -741,7 +766,8 @@ class CompuzoneParser:
             return Product(
                 name=full_product_name,
                 price=formatted_price,
-                specifications=final_specs
+                specifications=final_specs,
+                product_link=product_link
             )
             
         except Exception as e:
@@ -797,6 +823,21 @@ class CompuzoneParser:
                 if not self._matches_capacity_filter(product_name, capacity_filter):
                     return None
             
+            # 제품 링크 추출
+            product_link = ""
+            main_link = item.select_one(".prd_info_name")
+            if main_link:
+                href = main_link.get('href')
+                if href:
+                    if href.startswith('http'):
+                        product_link = href
+                    elif href.startswith('/'):
+                        product_link = f"https://www.compuzone.co.kr{href}"
+                    elif href.startswith('../'):
+                        product_link = f"https://www.compuzone.co.kr/{href.replace('../', '')}"
+                    else:
+                        product_link = f"https://www.compuzone.co.kr/{href}"
+            
             # 기존 단일 제품 파싱 로직
             price_text = "품절"
             price_selectors = [
@@ -826,7 +867,8 @@ class CompuzoneParser:
             return Product(
                 name=product_name, 
                 price=formatted_price, 
-                specifications=deduplicated_specs
+                specifications=deduplicated_specs,
+                product_link=product_link
             )
             
         except Exception as e:
@@ -953,7 +995,8 @@ class CompuzoneParser:
             return Product(
                 name=product_name, 
                 price=formatted_price, 
-                specifications=deduplicated_specs
+                specifications=deduplicated_specs,
+                product_link=""
             )
             
         except Exception as e:
